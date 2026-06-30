@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="th" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sweep Report 1.0</title>
+    <!-- Google Fonts: Prompt -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Prompt', 'sans-serif'] },
+                    colors: {
+                        naklang: { 50: '#f0fbf6', 100: '#dcf7ea', 500: '#10b981', 600: '#059669', 700: '#047857', 900: '#064e3b' }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- html2pdf for PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- SweetAlert2 for UX -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <style>
+        body { font-family: 'Prompt', sans-serif; background-color: #fafafa; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 8px; }
+        ::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 8px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        .glass-card { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(229, 231, 235, 0.5); }
+        
+        /* สไตล์เฉพาะสำหรับฟอร์ม PDF ที่ซ่อนอยู่ */
+        #pdfReportContainer {
+            width: 210mm; /* A4 width */
+            padding: 15mm;
+            background: white;
+            color: #000;
+            font-family: 'Prompt', sans-serif !important;
+        }
+        .pdf-page-break { page-break-before: always; }
+        .pdf-no-break { page-break-inside: avoid; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Top Navigation -->
+    <nav class="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-naklang-500 flex items-center justify-center text-white shadow-md shadow-naklang-500/20">
+                        <i data-lucide="sparkles" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-semibold text-base sm:text-lg text-slate-900 leading-tight">เทศบาลตำบลนากลาง</h1>
+                        <p class="text-xs text-slate-500 font-light">ระบบติดตามงานปัดกวาดถนนพนักงานจ้างเหมา</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div id="dataStatusBadge" class="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span id="dataStatusText">กำลังโหลดข้อมูล...</span>
+                    </div>
+                    <button id="toggleDataSourceBtn" onclick="toggleDataSource()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium px-3 py-1.5 rounded-lg transition-all flex items-center gap-1">
+                        <i data-lucide="database" class="w-3.5 h-3.5"></i> <span id="sourceBtnText">สลับใช้ข้อมูลทดสอบ</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Filters Section -->
+        <section class="glass-card rounded-3xl p-6 mb-8 shadow-sm">
+            <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="sliders-horizontal" class="w-5 h-5 text-naklang-500"></i>
+                    <h2 class="font-medium text-slate-900 text-base">ตัวกรองและเงื่อนไข</h2>
+                </div>
+                <!-- ปุ่มสร้างรายงาน PDF -->
+                <button onclick="prepareAndShowPDF()" class="bg-naklang-600 hover:bg-naklang-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-md flex items-center gap-2">
+                    <i data-lucide="file-output" class="w-4 h-4"></i> สร้างรายงานสรุป (PDF)
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> วันที่เริ่มต้น</label>
+                    <input type="date" id="filterStartDate" onchange="onFilterChange()" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-naklang-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> วันที่สิ้นสุด</label>
+                    <input type="date" id="filterEndDate" onchange="onFilterChange()" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-naklang-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1"><i data-lucide="users" class="w-3.5 h-3.5"></i> รูปแบบผลงาน</label>
+                    <select id="filterScope" onchange="onScopeChange()" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-naklang-500">
+                        <option value="all">ผลงานรวมทุกคน</option>
+                        <option value="individual">ผลงานรายบุคคล</option>
+                    </select>
+                </div>
+                <div id="individualSelectContainer" class="opacity-40 pointer-events-none transition-all duration-300">
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1"><i data-lucide="user" class="w-3.5 h-3.5"></i> เลือกชื่อพนักงาน</label>
+                    <select id="filterEmployee" onchange="onFilterChange()" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-naklang-500">
+                        <option value="">-- เลือก --</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- KPI Overviews -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="glass-card rounded-3xl p-6 shadow-sm"><p class="text-xs text-slate-400">ปริมาณงานรวม (ตร.ม.)</p><p id="kpiTotalArea" class="text-3xl font-bold text-slate-900">0</p></div>
+            <div class="glass-card rounded-3xl p-6 shadow-sm"><p class="text-xs text-slate-400">จำนวนครั้งปฏิบัติงาน</p><p id="kpiWorkCount" class="text-3xl font-bold text-slate-900">0</p></div>
+            <div class="glass-card rounded-3xl p-6 shadow-sm"><p class="text-xs text-slate-400">เฉลี่ยต่อครั้ง (ตร.ม.)</p><p id="kpiAverageArea" class="text-3xl font-bold text-slate-900">0</p></div>
+            <div class="glass-card rounded-3xl p-6 shadow-sm"><p class="text-xs text-slate-400">จำนวนพนักงาน (คน)</p><p id="kpiActiveWorkers" class="text-3xl font-bold text-slate-900">0</p></div>
+        </section>
+
+        <!-- Chart -->
+        <section class="glass-card rounded-3xl p-6 shadow-sm mb-8">
+            <h3 class="font-medium text-slate-900 mb-4">กราฟแสดงผลงานเปรียบเทียบ</h3>
+            <div class="relative w-full h-[300px]">
+                <canvas id="monthlyChart"></canvas>
+            </div>
+        </section>
+        
+        <!-- Data Table -->
+        <section class="glass-card rounded-3xl p-6 shadow-sm overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[800px]">
+                <thead>
+                    <tr class="border-b border-slate-100 text-xs text-slate-400 font-medium">
+                        <th class="pb-3">รหัสรายงาน</th>
+                        <th class="pb-3">วันเวลา</th>
+                        <th class="pb-3">พนักงาน</th>
+                        <th class="pb-3">พื้นที่ (ตร.ม.)</th>
+                        <th class="pb-3">พิกัด GPS</th>
+                        <th class="pb-3 text-center">รูปถ่าย</th>
+                    </tr>
+                </thead>
+                <tbody id="rawDataTableBody" class="text-sm divide-y divide-slate-50"></tbody>
+            </table>
+        </section>
+    </main>
+
+    <!-- PDF Modal Preview (Hidden by default) -->
+    <div id="pdfModal" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm hidden flex flex-col items-center justify-center p-4 sm:p-8">
+        <div class="bg-white rounded-2xl w-full max-w-5xl h-full flex flex-col overflow-hidden shadow-2xl">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="file-text" class="w-5 h-5 text-naklang-600"></i> ตัวอย่างรายงาน PDF
+                </h3>
+                <div class="flex gap-2">
+                    <button onclick="downloadPDF()" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-1">
+                        <i data-lucide="download" class="w-4 h-4"></i> ดาวน์โหลด
+                    </button>
+                    <button onclick="closePDFModal()" class="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-lg text-sm font-medium transition-colors ml-4">
+                        ปิดหน้าต่าง
+                    </button>
+                </div>
+            </div>
+            <!-- PDF Viewer -->
+            <div class="flex-grow bg-slate-100 p-4 overflow-hidden relative">
+                <iframe id="pdfIframe" class="w-full h-full rounded border border-slate-200 shadow-inner"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Template for PDF Generation: 
+         ซ่อนโดยการย้ายออกนอกจอแทน display:none เพื่อให้ html2canvas ทำงานได้ -->
+    <div class="absolute -left-[9999px] -top-[9999px] -z-10">
+        <div id="pdfReportContainer">
+            <!-- Header -->
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h2 style="font-size: 24px; font-weight: bold; color: #064e3b; margin:0;">รายงานสรุปผลการปฏิบัติงานปัดกวาดถนน</h2>
+                <h3 style="font-size: 18px; color: #047857; margin-top:5px;">เทศบาลตำบลนากลาง อำเภอนากลาง จังหวัดหนองบัวลำภู</h3>
+                <p style="font-size: 14px; color: #666; margin-top:10px;" id="pdfDateRange"></p>
+            </div>
+            
+            <!-- Summary -->
+            <div style="display: flex; justify-content: space-between; background: #f0fbf6; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <div style="text-align: center; width: 30%;">
+                    <p style="font-size: 12px; color: #555; margin:0;">ปริมาณงานรวม</p>
+                    <p style="font-size: 20px; font-weight: bold; color: #10b981; margin:0;" id="pdfTotalArea">0 ตร.ม.</p>
+                </div>
+                <div style="text-align: center; width: 30%;">
+                    <p style="font-size: 12px; color: #555; margin:0;">จำนวนครั้งที่ปฏิบัติงาน</p>
+                    <p style="font-size: 20px; font-weight: bold; color: #10b981; margin:0;" id="pdfTotalCount">0 ครั้ง</p>
+                </div>
+                <div style="text-align: center; width: 30%;">
+                    <p style="font-size: 12px; color: #555; margin:0;">พนักงานที่ปฏิบัติงาน</p>
+                    <p style="font-size: 20px; font-weight: bold; color: #10b981; margin:0;" id="pdfTotalWorkers">0 คน</p>
+                </div>
+            </div>
+
+            <!-- Area Chart -->
+            <div style="margin-bottom: 30px;" class="pdf-no-break">
+                <h4 style="font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 10px;">กราฟแสดงพื้นที่การปฏิบัติงาน (Area Chart)</h4>
+                <div style="width: 100%; height: 250px;">
+                    <canvas id="pdfAreaChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div>
+                <h4 style="font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 10px;">รายละเอียดการปฏิบัติงาน</h4>
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                    <thead>
+                        <tr style="background-color: #f8fafc;">
+                            <th style="padding: 8px; border: 1px solid #e2e8f0; width: 10%;">รหัสรายงาน</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0; width: 15%;">วันเวลา</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0; width: 20%;">ชื่อผู้ปฏิบัติงาน</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; width: 15%;">พื้นที่ (ตร.ม.)</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0; width: 25%;">พิกัดสถานที่ (GPS)</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; width: 15%;">รูปถ่าย</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pdfTableBody">
+                        <!-- Data injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="margin-top: 40px; text-align: right; font-size: 12px; color: #666;">
+                พิมพ์เมื่อ: <span id="pdfPrintDate"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === การตั้งค่า Google Sheets ===
+        const SHEET_ID = "1ZHENbOfMS5PTO-QXVecAJxl5K6RFq5w4RmKUO-BB8yo";
+        const DATA_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
+        
+        // State Store
+        let rawData = [];         
+        let parsedData = [];      
+        let filteredData = [];    
+        let employeesList = [];   
+        let isUsingMock = false;  
+        let dashboardChart = null;
+        let pdfChartInstance = null;
+        let generatedPdfBlob = null; 
+
+        // Mock data
+        const mockRecords = [
+            { id: 'R001', date: '2026-06-25 08:30', employee: 'นายวิชัย สุวรรณดี', area: 1200, route: 'ตลาด', gps: '17.2, 102.1', pic: 'https://via.placeholder.com/50' },
+            { id: 'R002', date: '2026-06-26 09:15', employee: 'นางสมพร รักษ์ดี', area: 950, route: 'ซอย 12', gps: '17.3, 102.2', pic: 'https://via.placeholder.com/50' },
+            { id: 'R003', date: '2026-06-27 07:45', employee: 'นายวิชัย สุวรรณดี', area: 1500, route: 'ถนนหลัก', gps: 'https://maps.google.com/?q=17.1,102.0', pic: '-' }
+        ];
+
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            fetchDataFromSheet();
+        });
+
+        // 1. Fetching Data
+        async function fetchDataFromSheet() {
+            updateStatusBadge(false, "กำลังโหลด...");
+            try {
+                const res = await fetch(DATA_URL);
+                if (!res.ok) throw new Error("Network error");
+                const text = await res.text();
+                const jsonText = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+                processGoogleSheetData(JSON.parse(jsonText).table);
+                isUsingMock = false;
+                updateStatusBadge(false, "เชื่อมต่อชีตสำเร็จ");
+            } catch (error) {
+                console.warn("Using mock data", error);
+                parsedData = [...mockRecords];
+                isUsingMock = true;
+                updateStatusBadge(true, "ใช้ข้อมูลทดสอบ");
+            } finally {
+                onDataReady();
+            }
+        }
+
+        function toggleDataSource() {
+            if (isUsingMock) fetchDataFromSheet();
+            else { parsedData = [...mockRecords]; isUsingMock = true; updateStatusBadge(true, "ใช้ข้อมูลทดสอบ"); onDataReady(); }
+        }
+
+        function updateStatusBadge(isMock, text) {
+            const badge = document.getElementById('dataStatusBadge');
+            const indicatorText = document.getElementById('dataStatusText');
+            const sourceBtnText = document.getElementById('sourceBtnText');
+
+            badge.classList.remove('hidden');
+            indicatorText.textContent = text;
+            
+            if (isMock) {
+                badge.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100";
+                sourceBtnText.textContent = "สลับไปดึงจาก Google Sheet";
+            } else {
+                badge.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100";
+                sourceBtnText.textContent = "ใช้ข้อมูลทดสอบ (Mock Data)";
+            }
+        }
+
+        // 2. Parsing Data (ปรับปรุงการค้นหา Column อัจฉริยะ)
+        function processGoogleSheetData(table) {
+            let colsMap = { date: -1, emp: -1, area: -1, route: -1, id: -1, gps: -1, pic: -1 };
+            
+            // ฟังก์ชันช่วยหาชื่อคอลัมน์ (รองรับความคลาดเคลื่อนของ Sheet API)
+            const findColumns = (rowItems, isDataRow = false) => {
+                rowItems.forEach((item, idx) => {
+                    if (!item) return;
+                    let l = '';
+                    if (isDataRow) l = String(item.v || '').toLowerCase();
+                    else l = String(item.label || '').toLowerCase();
+                    
+                    if (!l) return;
+
+                    if (colsMap.date === -1 && (l.includes('วัน') || l.includes('date') || l.includes('เวลา'))) colsMap.date = idx;
+                    if (colsMap.emp === -1 && (l.includes('ชื่อ') || l.includes('พนักงาน') || l.includes('ผู้ปฏิบัติ'))) colsMap.emp = idx;
+                    if (colsMap.area === -1 && (l.includes('พื้นที่') || l.includes('ตร.ม') || l.includes('area') || l.includes('ขนาด'))) colsMap.area = idx;
+                    if (colsMap.route === -1 && (l.includes('ทาง') || l.includes('สถานที่') || l.includes('route'))) colsMap.route = idx;
+                    if (colsMap.id === -1 && (l.includes('รหัส') || l.includes('id'))) colsMap.id = idx;
+                    // ค้นหาคำว่า 'พิกัด', 'gps', หรือ 'ตำแหน่ง'
+                    if (colsMap.gps === -1 && (l.includes('พิกัด') || l.includes('gps') || l.includes('ตำแหน่ง'))) colsMap.gps = idx;
+                    if (colsMap.pic === -1 && (l.includes('รูป') || l.includes('ลิงก์') || l.includes('pic') || l.includes('ภาพ'))) colsMap.pic = idx;
+                });
+            };
+
+            // ตรวจสอบจาก table.cols (ส่วนของ Header ปกติ)
+            findColumns(table.cols, false);
+
+            // หากหาไม่พบ อาจเกิดจากการที่ Google Sheet ถือว่าแถวแรกสุด (ที่ควรเป็น Header) กลายเป็น Data
+            let dataRows = table.rows;
+            if (dataRows.length > 0 && (colsMap.gps === -1 || colsMap.emp === -1)) {
+                findColumns(dataRows[0].c, true);
+                
+                // หากพบว่า Data Row แถวแรกเป็น Header จริง ให้ตัดแถวนั้นทิ้ง
+                const firstRowText = String(dataRows[0].c[colsMap.emp]?.v || '') + String(dataRows[0].c[colsMap.gps]?.v || '');
+                if (firstRowText.includes('ชื่อ') || firstRowText.includes('พิกัด')) {
+                    dataRows.shift();
+                }
+            }
+
+            // Helper อ่านค่าข้อมูลเซลล์
+            const getVal = (cell) => {
+                if (!cell) return '-';
+                if (cell.f) return String(cell.f).trim();
+                if (cell.v !== null && cell.v !== undefined) return String(cell.v).trim();
+                return '-';
+            };
+
+            parsedData = dataRows.map((row, i) => {
+                const c = row.c;
+                if(!c) return null;
+                
+                let areaVal = colsMap.area > -1 ? parseFloat(getVal(c[colsMap.area]).replace(/,/g,'')) || 0 : 0;
+                let empVal = colsMap.emp > -1 ? getVal(c[colsMap.emp]) : 'ไม่ระบุ';
+                
+                return {
+                    id: colsMap.id > -1 ? getVal(c[colsMap.id]) : `REP-${Math.floor(Math.random()*9000)+1000}`,
+                    date: colsMap.date > -1 ? getVal(c[colsMap.date]) : `2026-06-${String((i%30)+1).padStart(2, '0')}`,
+                    employee: empVal,
+                    area: areaVal,
+                    route: colsMap.route > -1 ? getVal(c[colsMap.route]) : '-',
+                    gps: colsMap.gps > -1 ? getVal(c[colsMap.gps]) : '-',
+                    pic: colsMap.pic > -1 ? getVal(c[colsMap.pic]) : '-'
+                };
+            }).filter(item => item && item.area > 0 && item.employee !== '-' && !item.employee.includes('ชื่อ')); 
+        }
+
+        function onDataReady() {
+            employeesList = [...new Set(parsedData.map(i => i.employee))].filter(Boolean);
+            const empSelect = document.getElementById('filterEmployee');
+            empSelect.innerHTML = '<option value="">-- เลือก --</option>';
+            employeesList.forEach(e => empSelect.add(new Option(e, e)));
+            
+            if(parsedData.length > 0) {
+                document.getElementById('filterStartDate').value = "2026-06-01";
+                document.getElementById('filterEndDate').value = "2026-06-30";
+            }
+            applyFilters();
+        }
+
+        function onScopeChange() {
+            const scope = document.getElementById('filterScope').value;
+            const container = document.getElementById('individualSelectContainer');
+            if (scope === 'individual') container.classList.remove('opacity-40', 'pointer-events-none');
+            else { container.classList.add('opacity-40', 'pointer-events-none'); document.getElementById('filterEmployee').value = ""; }
+            applyFilters();
+        }
+        function onFilterChange() { applyFilters(); }
+
+        function applyFilters() {
+            const emp = document.getElementById('filterEmployee').value;
+            const scope = document.getElementById('filterScope').value;
+            filteredData = parsedData.filter(i => {
+                if(scope === 'individual' && emp && i.employee !== emp) return false;
+                return true; 
+            });
+            updateUI();
+        }
+
+        function updateUI() {
+            // KPIs
+            const total = filteredData.reduce((s, i) => s + i.area, 0);
+            document.getElementById('kpiTotalArea').innerText = total.toLocaleString();
+            document.getElementById('kpiWorkCount').innerText = filteredData.length;
+            document.getElementById('kpiAverageArea').innerText = filteredData.length ? Math.round(total/filteredData.length).toLocaleString() : 0;
+            document.getElementById('kpiActiveWorkers').innerText = new Set(filteredData.map(i => i.employee)).size;
+
+            // Chart
+            const ctx = document.getElementById('monthlyChart').getContext('2d');
+            if(dashboardChart) dashboardChart.destroy();
+            dashboardChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: filteredData.map(i => i.id).slice(0,10),
+                    datasets: [{ label: 'พื้นที่ (ตร.ม.)', data: filteredData.map(i => i.area).slice(0,10), backgroundColor: '#10b981', borderRadius: 6 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // Table UI Generation (มีเช็ค Link ให้กดได้)
+            const tbody = document.getElementById('rawDataTableBody');
+            tbody.innerHTML = filteredData.slice(0, 15).map(item => {
+                // แปลงพิกัด GPS เป็น Link หรือ Text
+                let gpsDisplay = item.gps;
+                if (gpsDisplay.startsWith('http')) {
+                    gpsDisplay = `<a href="${item.gps}" target="_blank" class="text-blue-500 hover:text-blue-700 underline font-medium">ดูแผนที่</a>`;
+                }
+                
+                let picDisplay = '-';
+                if (item.pic !== '-' && item.pic.startsWith('http')) {
+                    picDisplay = `<a href="${item.pic}" target="_blank" class="text-indigo-500 hover:text-indigo-700 underline font-medium">ดูรูป</a>`;
+                }
+
+                return `
+                <tr class="hover:bg-slate-50 border-b border-slate-50 last:border-0">
+                    <td class="py-2.5">${item.id}</td>
+                    <td class="py-2.5">${item.date}</td>
+                    <td class="py-2.5">${item.employee}</td>
+                    <td class="py-2.5 font-semibold text-naklang-600">${item.area.toLocaleString()}</td>
+                    <td class="py-2.5 text-xs truncate max-w-[150px]" title="${item.gps}">${gpsDisplay}</td>
+                    <td class="py-2.5 text-center">${picDisplay}</td>
+                </tr>
+                `;
+            }).join('');
+        }
+
+        // ==========================================
+        // ส่วนการสร้าง PDF
+        // ==========================================
+
+        async function prepareAndShowPDF() {
+            if(filteredData.length === 0) {
+                Swal.fire('ไม่มีข้อมูล', 'กรุณาปรับเงื่อนไขการค้นหา', 'warning');
+                return;
+            }
+
+            Swal.fire({ title: 'กำลังประมวลผล PDF...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            // 1. นำข้อมูลใส่ใน Template
+            document.getElementById('pdfTotalArea').innerText = filteredData.reduce((s, i) => s + i.area, 0).toLocaleString() + ' ตร.ม.';
+            document.getElementById('pdfTotalCount').innerText = filteredData.length + ' ครั้ง';
+            document.getElementById('pdfTotalWorkers').innerText = new Set(filteredData.map(i => i.employee)).size + ' คน';
+            
+            const scopeText = document.getElementById('filterScope').value === 'all' ? 'ผลรวมทั้งหมด' : `พนักงาน: ${document.getElementById('filterEmployee').value}`;
+            document.getElementById('pdfDateRange').innerText = `เงื่อนไข: ${scopeText}`;
+            
+            const now = new Date();
+            document.getElementById('pdfPrintDate').innerText = `${now.toLocaleDateString('th-TH')} ${now.toLocaleTimeString('th-TH')}`;
+
+            // สร้างตาราง PDF
+            const tbody = document.getElementById('pdfTableBody');
+            tbody.innerHTML = filteredData.map((item, index) => {
+                const breakClass = (index > 0 && index % 15 === 0) ? 'pdf-page-break' : 'pdf-no-break';
+                
+                // สำหรับหน้า PDF ทำความสะอาดข้อมูลลิงก์นิดหน่อยไม่ให้รกรุงรัง
+                let gpsText = item.gps;
+                if(gpsText.startsWith('http') && gpsText.length > 35) gpsText = 'ลิ้งก์พิกัด (สแกน/คลิกได้)';
+                
+                let picText = item.pic !== '-' ? 'มีรูปภาพ' : '-';
+
+                return `
+                <tr class="${breakClass}">
+                    <td style="padding: 6px; border: 1px solid #e2e8f0;">${item.id}</td>
+                    <td style="padding: 6px; border: 1px solid #e2e8f0;">${item.date}</td>
+                    <td style="padding: 6px; border: 1px solid #e2e8f0;">${item.employee}</td>
+                    <td style="padding: 6px; border: 1px solid #e2e8f0; text-align: right;">${item.area.toLocaleString()}</td>
+                    <td style="padding: 6px; border: 1px solid #e2e8f0; font-size: 10px; word-break: break-all;">${gpsText}</td>
+                    <td style="padding: 6px; border: 1px solid #e2e8f0; text-align: center; font-size: 10px;">${picText}</td>
+                </tr>
+            `}).join('');
+
+            // 2. สร้าง Area Chart สำหรับ PDF โดยเฉพาะ
+            const ctxPdf = document.getElementById('pdfAreaChart').getContext('2d');
+            if(pdfChartInstance) pdfChartInstance.destroy();
+            
+            const chartData = filteredData.slice(0, 15);
+            pdfChartInstance = new Chart(ctxPdf, {
+                type: 'line', 
+                data: {
+                    labels: chartData.map(i => i.id),
+                    datasets: [{
+                        label: 'ขนาดพื้นที่ (ตร.ม.)',
+                        data: chartData.map(i => i.area),
+                        fill: true,
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                        borderColor: 'rgba(16, 185, 129, 1)',
+                        tension: 0.3,
+                        pointBackgroundColor: '#047857'
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: false, 
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            await new Promise(r => setTimeout(r, 500));
+
+            // 3. แปลง HTML เป็น PDF ด้วย html2pdf
+            const element = document.getElementById('pdfReportContainer');
+            const opt = {
+                margin:       0,
+                filename:     `รายงานปัดกวาด_${now.getTime()}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).output('blob').then(function(pdfBlob) {
+                generatedPdfBlob = pdfBlob;
+                const pdfUrl = URL.createObjectURL(pdfBlob);
+                
+                document.getElementById('pdfIframe').src = pdfUrl;
+                document.getElementById('pdfModal').classList.remove('hidden');
+                
+                Swal.close();
+            }).catch(err => {
+                console.error("PDF Generation Error:", err);
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถสร้าง PDF ได้: ' + err.message, 'error');
+            });
+        }
+
+        function closePDFModal() {
+            document.getElementById('pdfModal').classList.add('hidden');
+            document.getElementById('pdfIframe').src = '';
+        }
+
+        function downloadPDF() {
+            if(!generatedPdfBlob) return;
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(generatedPdfBlob);
+            link.download = `รายงานสรุปปัดกวาดถนน_${new Date().toISOString().split('T')[0]}.pdf`;
+            link.click();
+        }
+    </script>
+</body>
+</html>
